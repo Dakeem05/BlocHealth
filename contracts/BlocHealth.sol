@@ -121,61 +121,120 @@ contract BlocHealth {
         _;
     }
 
-    modifier onlyHospitalOwner (string memory _hospitalId) {
+    function _onlyHospitalOwner (string memory _hospitalId) private view 
+    {
         if (msg.sender != hospitals[_hospitalId].owner) {
             revert NotHospitalOwnerError({ sender: msg.sender });
         }
+    }
+
+    modifier onlyHospitalOwner (string memory _hospitalId) {
+        _onlyHospitalOwner(_hospitalId);
         _;
+    }
+
+    function _hospitalStaffExists (
+        string memory _hospitalId, 
+        address _address
+    ) private view {
+        Hospital storage hospital = hospitals[_hospitalId];
+        if (
+            hospital.roles[_address].role != AccessRoles.Admin &&
+            hospital.roles[_address].role != AccessRoles.Doctor &&
+            hospital.roles[_address].role != AccessRoles.Nurse &&
+            hospital.roles[_address].role != AccessRoles.Staff
+        ) {
+            revert HospitalStaffDoesNotExistsError({ _address: _address });
+        }
+
     }
 
     modifier hospitalStaffExists (
         string memory _hospitalId, 
         address _address
     ) {
-
-        Hospital storage hospital = hospitals[_hospitalId];
-        if (keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Admin)) || keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Doctor)) || keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Nurse)) || keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Staff))) {
-            revert HospitalStaffDoesNotExistsError({ _address: _address });
-        }
+        _hospitalStaffExists(_hospitalId, _address);
         _;
+    }
+
+    function _patientExists (
+        string memory _hospitalId, 
+        address _patient
+    ) private view {
+        Hospital storage hospital = hospitals[_hospitalId];
+        if (hospital.patients[_patient].DOB == 0) {
+            revert PatientDoesNotExistsError({ patient: _patient });
+        }
     }
 
     modifier patientExists (
         string memory _hospitalId, 
         address _patient
     ) {
-
-        Hospital storage hospital = hospitals[_hospitalId];
-        if (keccak256(abi.encodePacked(hospital.patients[_patient].name)) == keccak256(abi.encodePacked("name"))) {
-            revert PatientDoesNotExistsError({ patient: _patient });
-        }
+        _patientExists(_hospitalId, _patient);
         _;
+    }
+
+    function _isAuthorizedRole (string memory _hospitalId) private view {
+        Hospital storage hospital = hospitals[_hospitalId];
+    
+        if (
+            msg.sender != hospital.owner &&
+            hospital.roles[msg.sender].role != AccessRoles.Admin &&
+            hospital.roles[msg.sender].role != AccessRoles.Doctor &&
+            hospital.roles[msg.sender].role != AccessRoles.Nurse
+        ) {
+            revert NotAuthorizedForHospitalError({ sender: msg.sender });
+        }
     }
 
     modifier isAuthorizedRole (string memory _hospitalId) {
-        Hospital storage hospital = hospitals[_hospitalId];
-        if (msg.sender != hospitals[_hospitalId].owner || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Admin)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Doctor)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Nurse)) ) {
-            revert NotAuthorizedForHospitalError({ sender: msg.sender });
-        }
+        _isAuthorizedRole(_hospitalId);
         _;
     }
 
-    modifier isAuthorizedToRetrieve (string memory _hospitalId) {
+    function _isAuthorizedToRetrieve(string memory _hospitalId) private view {
         Hospital storage hospital = hospitals[_hospitalId];
-        if (msg.sender != hospitals[_hospitalId].owner || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Admin)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Doctor)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Nurse)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Staff)) ) {
+        
+        if (
+            msg.sender != hospital.owner &&
+            hospital.roles[msg.sender].role != AccessRoles.Admin &&
+            hospital.roles[msg.sender].role != AccessRoles.Doctor &&
+            hospital.roles[msg.sender].role != AccessRoles.Nurse &&
+            hospital.roles[msg.sender].role != AccessRoles.Staff
+        ) {
             revert NotAuthorizedForHospitalError({ sender: msg.sender });
         }
+    }
+
+    modifier isAuthorizedToRetrieve (string memory _hospitalId) {
+        _isAuthorizedToRetrieve(_hospitalId);
         _;
+    }
+
+    function _isAuthorizedToRetrieveIncludingPatient(
+        string memory _hospitalId, 
+        address _patient
+    ) private view {
+        Hospital storage hospital = hospitals[_hospitalId];
+        
+        if (
+            msg.sender != _patient &&
+            msg.sender != hospital.owner &&
+            hospital.roles[msg.sender].role != AccessRoles.Admin &&
+            hospital.roles[msg.sender].role != AccessRoles.Doctor &&
+            hospital.roles[msg.sender].role != AccessRoles.Nurse &&
+            hospital.roles[msg.sender].role != AccessRoles.Staff
+        ) {
+            revert NotAuthorizedForHospitalError({ sender: msg.sender });
+        }
     }
 
     modifier isAuthorizedToRetrieveIncludingPatient (
         string memory _hospitalId, 
         address _patient
     ) {
-        Hospital storage hospital = hospitals[_hospitalId];
-        if (msg.sender != _patient || msg.sender != hospitals[_hospitalId].owner || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Admin)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Doctor)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Nurse)) || keccak256(abi.encodePacked(hospital.roles[msg.sender].role)) != keccak256(abi.encodePacked(AccessRoles.Staff)) ) {
-            revert NotAuthorizedForHospitalError({ sender: msg.sender });
-        }
+        _isAuthorizedToRetrieveIncludingPatient(_hospitalId, _patient);
         _;
     }
 
@@ -221,7 +280,12 @@ contract BlocHealth {
 
         Hospital storage hospital = hospitals[_hospitalId];
 
-        if (keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Admin)) || keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Doctor)) || keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Nurse)) || keccak256(abi.encodePacked(hospital.roles[_address].role)) != keccak256(abi.encodePacked(AccessRoles.Staff))) {
+        if (
+            hospital.roles[_address].role != AccessRoles.Admin &&
+            hospital.roles[_address].role != AccessRoles.Doctor && 
+            hospital.roles[_address].role != AccessRoles.Nurse &&
+            hospital.roles[_address].role != AccessRoles.Staff
+        ) {
             hospital.staffCount++;
         }
 
@@ -283,6 +347,25 @@ contract BlocHealth {
         emit PatientCreated(_name, _patient, _DOB);
     }
 
+    function getAllPatients(string calldata _hospitalId) isAuthorizedToRetrieve(_hospitalId) external view returns (PatientReturnInfo[] memory) {
+        Hospital storage hospital = hospitals[_hospitalId];
+        PatientReturnInfo[] memory allPatients = new PatientReturnInfo[](hospital.patientCount);
+        
+        for (uint256 i = 0; i < hospital.patientCount; i++) {
+            address patientAddress = hospital.patientAddresses[i];
+            Patient storage patient = hospital.patients[patientAddress];
+
+            allPatients[i] = PatientReturnInfo({
+                name: patient.name,
+                DOB: patient.DOB,
+                gender: patient.gender,
+                contactInfo: patient.contactInfo,
+                medicalInfo: patient.medicalInfo
+            });
+        }
+        return allPatients;
+    }
+
     function getPatientRecord (
         string calldata _hospitalId,
         address _patient
@@ -308,7 +391,9 @@ contract BlocHealth {
 
         for (uint256 i = 0; i < hospitals[_hospitalId].patientCount; i++) {
             if (hospitals[_hospitalId].patientAddresses[i] == _patient) {
-                delete hospitals[_hospitalId].patientAddresses[i];
+                hospitals[_hospitalId].patientAddresses[i] = hospitals[_hospitalId].patientAddresses[hospitals[_hospitalId].patientCount - 1];
+                hospitals[_hospitalId].patientAddresses.pop();
+                break;
             }
         }
 
@@ -325,6 +410,7 @@ contract BlocHealth {
 
         if (hospitals[_hospitalId].patients[_patient].appointments[_date].date == 0) {
             hospitals[_hospitalId].patients[_patient].appointmentCount++;
+            hospitals[_hospitalId].patients[_patient].appointmentDates.push(_date);
         }
         
         hospitals[_hospitalId].patients[_patient].appointments[_date] = _appointment;
@@ -332,24 +418,19 @@ contract BlocHealth {
         emit VisitRecordCreated(hospitals[_hospitalId].patients[_patient].name, _patient, _date);
     }
 
-    function getAllPatients(string calldata _hospitalId) isAuthorizedToRetrieve(_hospitalId) external view returns (PatientReturnInfo[] memory) {
-        Hospital storage hospital = hospitals[_hospitalId];
-        PatientReturnInfo[] memory allPatients = new PatientReturnInfo[](hospital.patientCount);
+
+    function getPatientAppointments (
+        string memory _hospitalId, 
+        address _patient
+    ) hospitalExists(_hospitalId) isAuthorizedToRetrieveIncludingPatient(_hospitalId, _patient) external view returns(Appointment[] memory) {
+        Patient storage patient = hospitals[_hospitalId].patients[_patient];
+
+        Appointment[] memory appointments = new Appointment[](patient.appointmentCount);
         
-        for (uint256 i = 0; i < hospital.patientCount; i++) {
-            address patientAddress = hospital.patientAddresses[i];
-            Patient storage patient = hospital.patients[patientAddress];
-
-            allPatients[i] = PatientReturnInfo({
-                name: patient.name,
-                DOB: patient.DOB,
-                gender: patient.gender,
-                contactInfo: patient.contactInfo,
-                medicalInfo: patient.medicalInfo
-            });
+        for (uint256 i = 0; i < patient.appointmentCount; i++) {
+            appointments[i] = patient.appointments[patient.appointmentDates[i]];
         }
-        return allPatients;
-    }
 
-    
+        return appointments;
+    }
 }
