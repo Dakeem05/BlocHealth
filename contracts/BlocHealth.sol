@@ -3,20 +3,33 @@ pragma solidity >=0.8.2 <=0.9.0;
 
 contract BlocHealth {
 
-    enum AccessRoles { Doctor, Staff, Nurse, Admin }
-    enum Gender { Male, Female, Other }
+    enum AccessRoles { NonStaff, Doctor, Staff, Nurse, Admin }
+    enum Gender { Other, Male, Female }
 
     struct Hospital {
         string name;
         string location;
-        uint256 DOE;
+        int256 DOE;
         uint256 hospitalRegNo;
         uint256 staffCount;
         uint256 patientCount;
         address owner;
+        address[] staffAddresses;
         mapping (address => Staff) roles;
         address[] patientAddresses;
         mapping (address => Patient) patients;
+    }
+
+    struct HospitalInfo {
+        string name;
+        string location;
+        int256 DOE;
+        uint256 hospitalRegNo;
+        uint256 staffCount;
+        uint256 patientCount;
+        address owner;
+        address[] staffAddresses;
+        address[] patientAddresses;
     }
 
     struct Staff {
@@ -32,6 +45,7 @@ contract BlocHealth {
         Gender gender;
         ContactInfo contactInfo;
         MedicalInfo medicalInfo;
+        bool isPublished;
         uint128 appointmentCount;
         uint256[] appointmentDates;
         mapping (uint256 => Appointment) appointments;
@@ -41,6 +55,7 @@ contract BlocHealth {
     struct PatientReturnInfo {
         string name;
         uint256 DOB;
+        bool isPublished;
         Gender gender;
         ContactInfo contactInfo;
         MedicalInfo medicalInfo;
@@ -138,11 +153,12 @@ contract BlocHealth {
         address _address
     ) private view {
         Hospital storage hospital = hospitals[_hospitalId];
+
+        AccessRoles staffRole = hospital.roles[_address].role;
+
         if (
-            hospital.roles[_address].role != AccessRoles.Admin &&
-            hospital.roles[_address].role != AccessRoles.Doctor &&
-            hospital.roles[_address].role != AccessRoles.Nurse &&
-            hospital.roles[_address].role != AccessRoles.Staff
+            msg.sender != hospital.owner &&
+            staffRole == AccessRoles.NonStaff
         ) {
             revert HospitalStaffDoesNotExistsError({ _address: _address });
         }
@@ -163,7 +179,7 @@ contract BlocHealth {
     ) private view {
         Hospital storage hospital = hospitals[_hospitalId];
         if (hospital.patients[_patient].DOB == 0) {
-            revert PatientDoesNotExistsError({ patient: _patient });
+            revert PatientDoesNotExistsError(_patient);
         }
     }
 
@@ -198,10 +214,7 @@ contract BlocHealth {
         
         if (
             msg.sender != hospital.owner &&
-            hospital.roles[msg.sender].role != AccessRoles.Admin &&
-            hospital.roles[msg.sender].role != AccessRoles.Doctor &&
-            hospital.roles[msg.sender].role != AccessRoles.Nurse &&
-            hospital.roles[msg.sender].role != AccessRoles.Staff
+            hospital.roles[msg.sender].role == AccessRoles.NonStaff
         ) {
             revert NotAuthorizedForHospitalError({ sender: msg.sender });
         }
@@ -221,12 +234,9 @@ contract BlocHealth {
         if (
             msg.sender != _patient &&
             msg.sender != hospital.owner &&
-            hospital.roles[msg.sender].role != AccessRoles.Admin &&
-            hospital.roles[msg.sender].role != AccessRoles.Doctor &&
-            hospital.roles[msg.sender].role != AccessRoles.Nurse &&
-            hospital.roles[msg.sender].role != AccessRoles.Staff
+            hospital.roles[msg.sender].role == AccessRoles.NonStaff
         ) {
-            revert NotAuthorizedForHospitalError({ sender: msg.sender });
+            revert NotAuthorizedForHospitalError(msg.sender);
         }
     }
 
@@ -242,7 +252,7 @@ contract BlocHealth {
         string memory _hospitalId, 
         string memory _name, 
         string memory _location, 
-        uint256 _DOE, 
+        int256 _DOE, 
         uint256 _hospitalRegNo
     ) external {
 
@@ -269,6 +279,25 @@ contract BlocHealth {
         hospitals[_hospitalId].owner = _newOwner;
     }
 
+    function getHospital (
+        string calldata _hospitalId
+    ) hospitalExists(_hospitalId) hospitalStaffExists(_hospitalId, msg.sender) external view returns (HospitalInfo memory) {
+
+        Hospital storage hospital = hospitals[_hospitalId];
+
+        return (HospitalInfo({
+            name : hospital.name,
+            location : hospital.location,
+            DOE : hospital.DOE,
+            hospitalRegNo : hospital.hospitalRegNo,
+            staffCount : hospital.staffCount,
+            patientCount : hospital.patientCount,
+            owner : hospital.owner,
+            patientAddresses : hospital.patientAddresses,
+            staffAddresses : hospital.staffAddresses
+        }));
+    }
+
     function updateHospitalStaffRoles (
         string memory _hospitalId, 
         address _address, 
@@ -281,12 +310,10 @@ contract BlocHealth {
         Hospital storage hospital = hospitals[_hospitalId];
 
         if (
-            hospital.roles[_address].role != AccessRoles.Admin &&
-            hospital.roles[_address].role != AccessRoles.Doctor && 
-            hospital.roles[_address].role != AccessRoles.Nurse &&
-            hospital.roles[_address].role != AccessRoles.Staff
+            keccak256(abi.encodePacked(hospital.roles[_address].phone)) == keccak256(abi.encodePacked(""))
         ) {
             hospital.staffCount++;
+            hospital.staffAddresses.push(_address);
         }
 
         hospital.roles[_address].name = _name;
@@ -306,10 +333,30 @@ contract BlocHealth {
         hospitalCount--;
     }
 
+    function getHospitalStaffs (string memory _hospitalId) onlyHospitalOwner(_hospitalId) hospitalExists(_hospitalId) external view returns(Staff[] memory) {
+        Hospital storage hospital = hospitals[_hospitalId];
+
+        Staff[] memory staffs = new Staff[](hospital.staffCount);
+        
+        for (uint256 i = 0; i < hospital.staffCount; i++) {
+            staffs[i] = hospital.roles[hospital.staffAddresses[i]];
+        }
+
+        return staffs;
+    }
+
     function deleteHospitalStaff (
         string memory _hospitalId, 
         address _address
     ) onlyHospitalOwner(_hospitalId) hospitalExists(_hospitalId) isValidAddress(_address) hospitalStaffExists(_hospitalId, _address) external {
+        
+        for (uint256 i = 0; i < hospitals[_hospitalId].staffCount; i++) {
+            if (hospitals[_hospitalId].staffAddresses[i] == _address) {
+                hospitals[_hospitalId].staffAddresses[i] = hospitals[_hospitalId].staffAddresses[hospitals[_hospitalId].staffCount - 1];
+                hospitals[_hospitalId].staffAddresses.pop();
+                break;
+            }
+        }
 
         delete hospitals[_hospitalId].roles[_address];
         hospitals[_hospitalId].staffCount--;
@@ -319,6 +366,7 @@ contract BlocHealth {
         string memory _hospitalId, 
         address _patient, 
         string memory _name, 
+        bool _isPublished,
         Gender _gender, 
         uint256 _DOB, 
         ContactInfo calldata _contactInfo,
@@ -336,6 +384,7 @@ contract BlocHealth {
         patient.name = _name;
         patient.DOB = _DOB;
         patient.gender = _gender;
+        patient.isPublished = _isPublished;
 
         patient.contactInfo = _contactInfo;
         patient.medicalInfo = _medicalInfo;
@@ -359,6 +408,7 @@ contract BlocHealth {
                 name: patient.name,
                 DOB: patient.DOB,
                 gender: patient.gender,
+                isPublished: patient.isPublished,
                 contactInfo: patient.contactInfo,
                 medicalInfo: patient.medicalInfo
             });
@@ -373,15 +423,14 @@ contract BlocHealth {
 
         Patient storage patient = hospitals[_hospitalId].patients[_patient];
 
-        PatientReturnInfo memory returnPatient = PatientReturnInfo({
+        return (PatientReturnInfo({
             name: patient.name,
             DOB: patient.DOB,
             gender: patient.gender,
+            isPublished: patient.isPublished,
             contactInfo: patient.contactInfo,
             medicalInfo: patient.medicalInfo
-        });
-
-        return (returnPatient, patient.emergencyContacts);
+        }), patient.emergencyContacts);
     }
 
     function deletePatientRecord (
@@ -408,14 +457,16 @@ contract BlocHealth {
         Appointment calldata _appointment
     ) isAuthorizedRole(_hospitalId) patientExists(_hospitalId, _patient) external {
 
-        if (hospitals[_hospitalId].patients[_patient].appointments[_date].date == 0) {
-            hospitals[_hospitalId].patients[_patient].appointmentCount++;
-            hospitals[_hospitalId].patients[_patient].appointmentDates.push(_date);
+        Patient storage patient = hospitals[_hospitalId].patients[_patient];
+
+        if (patient.appointments[_date].date == 0) {
+            patient.appointmentCount++;
+            patient.appointmentDates.push(_date);
         }
         
-        hospitals[_hospitalId].patients[_patient].appointments[_date] = _appointment;
+        patient.appointments[_date] = _appointment;
 
-        emit VisitRecordCreated(hospitals[_hospitalId].patients[_patient].name, _patient, _date);
+        emit VisitRecordCreated(patient.name, _patient, _date);
     }
 
 
